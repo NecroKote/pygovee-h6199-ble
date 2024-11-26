@@ -1,0 +1,42 @@
+[project]
+name = "govee-h6199-ble"
+version = "0.0.0"
+license = { file = "LICENSE" }
+keywords = ["ble", "govee"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Repository = "https://github.com/NecroKote/pygovee-h6199-ble"
+Issues = "https://github.com/NecroKote/pygovee-h6199-ble/issues"
+
+
+[tool.poetry]
+name = "govee-h6199-ble"
+version = "0.1.0"
+description = "Manage Govee DreamView T1 (H6199) BLE devices"
+authors = ["Mikalai Kukhta <mikalai.kukhta@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+bleak = ">= 0.15.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
+known_first_party = ["govee_h6199_ble", "tests"]
