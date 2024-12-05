@@ -18,8 +18,8 @@ T = TypeVar("T")
 
 
 class GoveeH6199:
-    def __init__(self, client: BleakClient):
-        self._log = logging.getLogger(f"govee.h6199.{client.address[-4:]}")
+    def __init__(self, client: BleakClient, logger: logging.Logger | None = None):
+        self._log = logger or logging.getLogger(__name__)
         self._client = client
 
         self._loop = asyncio.get_running_loop()
@@ -31,7 +31,8 @@ class GoveeH6199:
         )
 
     async def stop(self):
-        await self._client.stop_notify(UUID_NOTIFY_CHARACTERISTIC)
+        if self._client.is_connected:
+            await self._client.stop_notify(UUID_NOTIFY_CHARACTERISTIC)
 
     def _handle_response(self, sender: BleakGATTCharacteristic, data: bytearray):
         cmd = data[0]
@@ -72,12 +73,12 @@ class GoveeH6199:
     async def command_with_reply(
         self, cmd: int, group: int, payload: list[int] | None = None, timeout=5.0
     ):
+        key = (cmd, group)
         frame = self._frame(cmd, group, payload or [])
-        if _ := self._pending_commands.get(frame):
+        if _ := self._pending_commands.get(key):
             self._log.warning(f"({cmd}, {group}) already pending response")
             raise ValueError("already pending response")
 
-        key = (cmd, group)
         future: asyncio.Future[bytes] = self._loop.create_future()
         self._pending_commands[key] = future
 
@@ -86,7 +87,9 @@ class GoveeH6199:
             UUID_CONTROL_CHARACTERISTIC, frame, response=True
         )
 
-        timer_handle = self._loop.call_later(timeout, partial(self._on_timeout, future))
+        timer_handle = self._loop.call_later(
+            0.5 if (timeout == -1) else timeout, partial(self._on_timeout, future)
+        )
         try:
             await future
         finally:
@@ -103,9 +106,20 @@ class GoveeH6199:
         self, command: CommandWithParser[T], timeout: float
     ) -> T: ...
 
+    @overload
+    async def send_command(
+        self, command: CommandWithParser[T], timeout=-1
+    ) -> None | T: ...
+
     async def send_command(self, command: Command, timeout: float = 5.0):
         cmd, group, payload = command.payload()
-        response = await self.command_with_reply(cmd, group, payload, timeout)
+        try:
+            response = await self.command_with_reply(cmd, group, payload, timeout)
+        except asyncio.TimeoutError:
+            if timeout == -1:
+                return None
+
+            raise
 
         if isinstance(command, CommandWithParser):
             return command.parse_response(response)
@@ -115,4 +129,10 @@ class GoveeH6199:
     async def send_commands(self, commands: list[Command], timeout: float = 5.0):
         for command in commands:
             cmd, group, payload = command.payload()
-            await self.command_with_reply(cmd, group, payload, timeout)
+            try:
+                await self.command_with_reply(cmd, group, payload, timeout)
+            except asyncio.TimeoutError:
+                if timeout == -1:
+                    pass
+
+                raise

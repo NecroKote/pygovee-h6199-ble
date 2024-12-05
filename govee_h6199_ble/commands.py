@@ -1,44 +1,83 @@
-from .base import Command, CommandWithParser
+from .base import Command, CommandPayload, CommandWithParser
 from .const import ColorMode, MusicMode, PacketHeader, PacketType
+from .model import (
+    Modes,
+    MusicColorMode,
+    RGBColor,
+    StaticColorMode,
+    UnknownColorMode,
+    VideoColorMode,
+)
+
+
+class GetStatus(CommandWithParser[bytes]):
+    """
+    Get the status of the specific domain
+
+    Equivalent to: calling `command_with_reply` with `PacketHeader.STATUS`
+    and `domain` as the first byte
+    """
+
+    def __init__(self, domain: int, payload: list[int] = []):
+        self._domain = domain
+        self._payload = payload
+
+    def payload(self):
+        return CommandPayload(PacketHeader.STATUS, self._domain, self._payload)
+
+    def parse_response(self, response):
+        return response
 
 
 class GetPowerState(CommandWithParser[bool]):
+    """Get the power state of the device"""
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.POWER, [])
+        return CommandPayload(PacketHeader.STATUS, PacketType.POWER, [])
 
     def parse_response(self, response: bytes):
         return bool(response[0])
 
 
 class PowerOn(Command):
+    """Turn on the device"""
+
     def payload(self):
-        return (PacketHeader.COMMAND, PacketType.POWER, [0x01])
+        return CommandPayload(PacketHeader.COMMAND, PacketType.POWER, [0x01])
 
 
 class PowerOff(Command):
+    """Turn off the device"""
+
     def payload(self):
-        return (PacketHeader.COMMAND, PacketType.POWER, [0x00])
+        return CommandPayload(PacketHeader.COMMAND, PacketType.POWER, [0x00])
 
 
 class GetFirmwareVersion(CommandWithParser[str]):
+    """Get the firmware version of the device"""
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.FW, [])
+        return CommandPayload(PacketHeader.STATUS, PacketType.FW, [])
 
     def parse_response(self, response: bytes):
-        return str(response, encoding="ascii")
+        return str(response[0:8], encoding="ascii")
 
 
 class GetHardwareVersion(CommandWithParser[str]):
+    """Get the hardware version of the device"""
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.HW, [0x03])
+        return CommandPayload(PacketHeader.STATUS, PacketType.HW, [0x03])
 
     def parse_response(self, response: bytes):
-        return str(response, encoding="ascii")
+        return str(response[1:8], encoding="ascii")
 
 
 class GetMacAddress(CommandWithParser[str]):
+    """Get the MAC address of the device's WiFi chip"""
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.MAC, [])
+        return CommandPayload(PacketHeader.STATUS, PacketType.MAC, [])
 
     def parse_response(self, response: bytes):
         raw = response[:6]
@@ -46,55 +85,92 @@ class GetMacAddress(CommandWithParser[str]):
 
 
 class SetBrightness(Command):
-    def __init__(self, value: int):
-        if not 0 <= value <= 100:
-            raise ValueError("value must be 0-100")
+    """
+    Set the brightness of the device
 
-        self._value = value
+    :param percent: The brightness percentage (1-100)
+    """
+
+    def __init__(self, percent: int):
+        if not 1 <= percent <= 100:
+            raise ValueError("value must be 1-100")
+
+        self._value = percent
 
     def payload(self):
-        return (PacketHeader.COMMAND, PacketType.BRIGHTNESS, [self._value])
+        return CommandPayload(
+            PacketHeader.COMMAND, PacketType.BRIGHTNESS, [self._value]
+        )
 
 
 class GetBrightness(CommandWithParser[int]):
+    """Get the brightness of the device in percent"""
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.BRIGHTNESS, [])
+        return CommandPayload(PacketHeader.STATUS, PacketType.BRIGHTNESS, [])
 
     def parse_response(self, response):
         return response[0]
 
 
-class GetColorMode(CommandWithParser[ColorMode]):
+class GetColorMode(CommandWithParser[Modes]):
+    """
+    Get the current mode the device is in
+    """
+
     def payload(self):
-        return (PacketHeader.STATUS, PacketType.COLOR, [])
+        return CommandPayload(PacketHeader.STATUS, PacketType.COLOR, [])
 
     def parse_response(self, response):
-        return ColorMode(response[0])
+        mode = ColorMode(response[0])
+        match mode:
+            case ColorMode.VIDEO:
+                full_screen = bool(response[1])
+                game_mode = bool(response[2])
+                saturation = response[3]
+                return VideoColorMode(full_screen, game_mode, saturation)
+
+            case ColorMode.MUSIC:
+                music_mode = MusicMode(response[1])
+                return MusicColorMode(music_mode)
+
+            case ColorMode.STATIC:
+                # HINT: the current fw version (1.10.04) doesn't seem to return the static color
+                return StaticColorMode()
+
+        return UnknownColorMode(mode)
 
 
 class SetStaticColor(Command):
+    """Switch the device in the Static Color mode"""
+
     def __init__(
         self,
-        color: tuple[int, int, int],
+        rgb_color: RGBColor,
     ):
-        self._color = color
+        self._color = rgb_color
 
     def payload(self):
         r, g, b = self._color
         pkt = [ColorMode.STATIC, 0x01, r, g, b] + ([0x00] * 5) + [0xFF, 0x7F]
 
-        return (PacketHeader.COMMAND, PacketType.COLOR, pkt)
+        return CommandPayload(PacketHeader.COMMAND, PacketType.COLOR, pkt)
 
 
 class SetMusicModeRythm(Command):
+    """Switch the device in the Music mode with Rythm effect"""
+
     def __init__(
         self,
         calm: bool = True,
         sensitivity: int = 100,
-        color: tuple[int, int, int] | None = None,
+        rgb_color: RGBColor | None = None,
     ):
+        if not 0 <= sensitivity <= 100:
+            raise ValueError("sensitivity must be 0-100")
+
         self._calm = calm
-        self._color = color
+        self._color = rgb_color
         self._sensitivity = sensitivity
 
     def payload(self):
@@ -104,15 +180,20 @@ class SetMusicModeRythm(Command):
             r, g, b = self._color
             pkt += [0x01, r, g, b]
 
-        return (PacketHeader.COMMAND, PacketType.COLOR, pkt)
+        return CommandPayload(PacketHeader.COMMAND, PacketType.COLOR, pkt)
 
 
 class SetMusicModeEnergic(Command):
+    """Switch the device in the Music mode with Energic effect"""
+
     def __init__(self, sensitivity: int = 100):
+        if not 0 <= sensitivity <= 100:
+            raise ValueError("sensitivity must be 0-100")
+
         self._sensitivity = sensitivity
 
     def payload(self):
-        return (
+        return CommandPayload(
             PacketHeader.COMMAND,
             PacketType.COLOR,
             [ColorMode.MUSIC, MusicMode.ENERGIC, self._sensitivity],
@@ -120,12 +201,17 @@ class SetMusicModeEnergic(Command):
 
 
 class SetMusicModeSpectrum(Command):
+    """Switch the device in the Music mode with Spectrum effect"""
+
     def __init__(
         self,
         sensitivity: int = 100,
-        color: tuple[int, int, int] | None = None,
+        rgb_color: RGBColor | None = None,
     ):
-        self._color = color
+        if not 0 <= sensitivity <= 100:
+            raise ValueError("sensitivity must be 0-100")
+
+        self._color = rgb_color
         self._sensitivity = sensitivity
 
     def payload(self):
@@ -135,7 +221,7 @@ class SetMusicModeSpectrum(Command):
             r, g, b = self._color
             pkt += [0x01, r, g, b]
 
-        return (
+        return CommandPayload(
             PacketHeader.COMMAND,
             PacketType.COLOR,
             pkt,
@@ -143,12 +229,17 @@ class SetMusicModeSpectrum(Command):
 
 
 class SetMusicModeRolling(Command):
+    """Switch the device in the Music mode with Rolling effect"""
+
     def __init__(
         self,
         sensitivity: int = 100,
-        color: tuple[int, int, int] | None = None,
+        rgb_color: RGBColor | None = None,
     ):
-        self._color = color
+        if not 0 <= sensitivity <= 100:
+            raise ValueError("sensitivity must be 0-100")
+
+        self._color = rgb_color
         self._sensitivity = sensitivity
 
     def payload(self):
@@ -158,7 +249,7 @@ class SetMusicModeRolling(Command):
             r, g, b = self._color
             pkt += [0x01, r, g, b]
 
-        return (
+        return CommandPayload(
             PacketHeader.COMMAND,
             PacketType.COLOR,
             pkt,
@@ -166,6 +257,8 @@ class SetMusicModeRolling(Command):
 
 
 class SetVideoMode(Command):
+    """Switch the device in the Video mode a.k.a Camera mode"""
+
     def __init__(
         self,
         full_screen: bool = True,
@@ -176,6 +269,9 @@ class SetVideoMode(Command):
     ):
         if not 0 <= saturation <= 100:
             raise ValueError("saturation must be 0-100")
+
+        if not 0 <= sound_effects_softness <= 100:
+            raise ValueError("sound_effects_softness must be 0-100")
 
         self._full_screen = full_screen
         self._saturation = saturation
@@ -194,4 +290,4 @@ class SetVideoMode(Command):
         if self._sound_effects:
             pkt += [0x01, self._sound_effects_softness]
 
-        return (PacketHeader.COMMAND, PacketType.COLOR, pkt)
+        return CommandPayload(PacketHeader.COMMAND, PacketType.COLOR, pkt)

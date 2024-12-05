@@ -25,6 +25,8 @@ class ColorMode(IntEnum):
     MUSIC = 0x13
     STATIC = 0x15
 
+    UNKNOWN = 0xFF
+
 
 class MusicMode(IntEnum):
     RYTHM = 0x03

@@ -10,10 +10,10 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
 ]
 
@@ -24,7 +24,7 @@ Issues = "https://github.com/NecroKote/pygovee-h6199-ble/issues"
 
 [tool.poetry]
 name = "govee-h6199-ble"
-version = "0.1.0"
+version = "0.2.0"
 description = "Manage Govee DreamView T1 (H6199) BLE devices"
 authors = ["Mikalai Kukhta <mikalai.kukhta@gmail.com>"]
 readme = "README.md"

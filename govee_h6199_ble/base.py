@@ -1,8 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import Generic, NamedTuple, TypeVar
+
+from .const import PacketHeader, PacketType
 
 T = TypeVar("T")
-CommandPayload = tuple[int, int, bytes]
+
+
+class CommandPayload(NamedTuple):
+    header: PacketHeader
+    domain: PacketType | int
+    payload: list[int]
 
 
 class Command(ABC):

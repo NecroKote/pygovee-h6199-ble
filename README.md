@@ -7,6 +7,13 @@
 This is a simple python client to control the Govee DreamView T1 (H6199) via BLE.
 
 
+## Limitations
+The client was tested on a device with **1.10.04 / 3.02.01** FW/HW versions.
+
+Getting current mode would not return currently set color of a static mode and wouldn't distinguish specific music modes and their parameters. The former is caused by device responding with all zeroes, and the latter can be fixed in the future.
+
+There is no support for setting colors for specific segments, nor controling the brightness for individual segments.
+
 ## Usage
 
 The client uses `bleak` library and relies on it's `BleakClient` instance.
@@ -17,18 +24,22 @@ Client supports the following actions (from `govee_h6199_ble.commands` package):
   - hw version
   - mac address
   - brightness
-  - color mode
+  - current mode
 - Turn on/off
 - Set brightness
-- Set Static color
+- Set Static color mode
 - Set Music color mode
   - Energic mode
   - Rythm mode
   - Spectrum mode
   - Rolling mode
 - Set Video color mode
+  - Movie mode
+  - Game mode
 
-Example:
+More information can be found by inspecting the `govee_h6199_ble.commands` package.
+
+### Example
 ```python
 from bleak import BleakClient, BleakScanner
 from govee_h6199_ble import GoveeH6199, GetFirmwareVersion, PowerOn, PowerOff
@@ -51,16 +62,18 @@ if __name__ == '__main__':
                     print("power on")
 
                     # get firmware version
-                    fw_version = await h6199.get(GetFirmwareVersion())
+                    fw_version = await device.send_command(GetFirmwareVersion())
                     print(fw_version)
 
                     # turn off
-                    await h6199.set(PowerOff())
+                    await device.send_command(PowerOff())
                 else:
 
                     # turn on
-                    await h6199.set(PowerOn())
+                    await device.send_command(PowerOn())
 ```
+
+The chain of commands can be sent using `send_commands` but in this mode you will not receive any responses.
 
 You can also run raw commands using:
 ```python
