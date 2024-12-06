@@ -60,7 +60,7 @@ class GetFirmwareVersion(CommandWithParser[str]):
         return CommandPayload(PacketHeader.STATUS, PacketType.FW, [])
 
     def parse_response(self, response: bytes):
-        return str(response[0:8], encoding="ascii")
+        return str(response[0:7], encoding="ascii")
 
 
 class GetHardwareVersion(CommandWithParser[str]):

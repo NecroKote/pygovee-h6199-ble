@@ -24,7 +24,7 @@ Issues = "https://github.com/NecroKote/pygovee-h6199-ble/issues"
 
 [tool.poetry]
 name = "govee-h6199-ble"
-version = "0.2.0"
+version = "0.2.1"
 description = "Manage Govee DreamView T1 (H6199) BLE devices"
 authors = ["Mikalai Kukhta <mikalai.kukhta@gmail.com>"]
 readme = "README.md"
