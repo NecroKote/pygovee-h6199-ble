@@ -1,6 +1,6 @@
 [project]
 name = "govee-h6199-ble"
-version = "0.0.0"
+version = "0.0.1"
 license = { file = "LICENSE" }
 keywords = ["ble", "govee"]
 classifiers = [

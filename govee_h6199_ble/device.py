@@ -23,7 +23,7 @@ class GoveeH6199:
         self._client = client
 
         self._loop = asyncio.get_running_loop()
-        self._pending_commands: dict[tuple, asyncio.Future[bytes]] = {}
+        self._pending_commands: dict[tuple[int, int], asyncio.Future[bytes]] = {}
 
     async def start(self):
         await self._client.start_notify(
@@ -40,10 +40,19 @@ class GoveeH6199:
         payload = bytes(data[2:-1])
 
         self._log.debug(
-            f"recv: {as_hex_string(data)} (cmd={cmd:02x} group={group:02x})"
-        )
-        if waiting := self._pending_commands.get((cmd, group)):
-            waiting.set_result(payload)
+                f"recv: {as_hex_string(data)} (cmd={cmd:02x} group={group:02x})"
+           )
+        # Pop the waiter so a duplicate notification won't try to complete it again.
+        waiting = self._pending_commands.pop((cmd, group), None)
+        if waiting is None:
+                return  # stray/late notify; nothing pending for this (cmd, group)
+        try:
+                # Complete only if still pending.
+            if not waiting.cancelled() and not waiting.done():
+                    waiting.set_result(payload)
+        except asyncio.InvalidStateError:
+            # Already completed/cancelled elsewhere; ignore duplicate/late notify.
+            pass
 
     def _cs(self, data: bytes):
         checksum = 0
@@ -78,6 +87,10 @@ class GoveeH6199:
         if _ := self._pending_commands.get(key):
             self._log.warning(f"({cmd}, {group}) already pending response")
             raise ValueError("already pending response")
+        # If a previous waiter exists for the same key, cancel and replace it
+        old = self._pending_commands.pop(key, None)
+        if old is not None and not old.done():
+            old.cancel()
 
         future: asyncio.Future[bytes] = self._loop.create_future()
         self._pending_commands[key] = future
@@ -87,14 +100,21 @@ class GoveeH6199:
             UUID_CONTROL_CHARACTERISTIC, frame, response=True
         )
 
-        timer_handle = self._loop.call_later(
-            0.5 if (timeout == -1) else timeout, partial(self._on_timeout, future)
-        )
+        # Schedule timeout only when timeout >= 0 (no-timeout when timeout == -1)
+        timer_handle = None
+        if timeout is None:
+                timeout = -1
+        if timeout >= 0:
+                timer_handle = self._loop.call_later(timeout, partial(self._on_timeout, future))
         try:
             await future
         finally:
-            self._pending_commands.pop(key, None)
-            timer_handle.cancel()
+            # Only remove if it still points to *this* future
+            cur = self._pending_commands.get(key)
+            if cur is future:
+                self._pending_commands.pop(key, None)
+            if timer_handle is not None:
+                timer_handle.cancel()
 
         return future.result()
 
