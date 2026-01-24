@@ -21,7 +21,7 @@ CommandKey: TypeAlias = tuple[int, int]
 
 class GoveeH6199:
     def __init__(self, client: BleakClient, logger: logging.Logger | None = None):
-        self._log = logger or logging.getLogger(__name__)
+        self._log = logger or logging.getLogger(__name__ + "@" + str(id(self)))
         self._client = client
 
         self._loop = asyncio.get_running_loop()
