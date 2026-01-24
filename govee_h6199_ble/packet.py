@@ -23,3 +23,10 @@ def make_frame(cmd: int, group: int, payload: list[int]) -> bytes:
     frame[19] = checksum(frame[:-1])
 
     return bytes(frame)
+
+
+def unpack_frame(frame: bytes) -> tuple[int, int, bytes]:
+    """Unpack a response frame into command, group, and payload."""
+
+    cmd, group, *payload, _ = frame
+    return cmd, group, bytes(payload)

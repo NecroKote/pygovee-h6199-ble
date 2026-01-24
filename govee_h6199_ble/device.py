@@ -3,11 +3,10 @@ import logging
 from typing import NamedTuple, Sequence, TypeVar, overload
 
 from bleak import BleakClient
-from bleak.backends.characteristic import BleakGATTCharacteristic
 
 from .commands import Command, CommandWithParser
 from .const import UUID_CONTROL_CHARACTERISTIC, UUID_NOTIFY_CHARACTERISTIC
-from .packet import make_frame
+from .packet import make_frame, unpack_frame
 
 
 def as_hex_string(v: bytes):
@@ -66,16 +65,9 @@ class GoveeH6199:
 
         self._log.debug("stop done")
 
-    def _handle_response(self, sender: BleakGATTCharacteristic, data: bytearray):
-        if (pending := self._pending_future) is None:
-            return
-
-        cmd, group, *payload, _ = data
-        self._log.debug(
-            f"response cmd={cmd:02x} group={group:02x} frame={as_hex_string(data)})"
-        )
-
-        pending.set_result(bytes(payload))
+    def _handle_response(self, _, data: bytearray):
+        if pending := self._pending_future:
+            pending.set_result(data)
 
     async def exchange_frame(
         self,
@@ -100,8 +92,14 @@ class GoveeH6199:
                 result = await asyncio.wait_for(
                     self._pending_future, timeout=timeouts.response
                 )
+
+                cmd, group, payload = unpack_frame(result)
+                self._log.debug(
+                    f"response cmd={cmd:02x} group={group:02x} frame={as_hex_string(payload)})"
+                )
+
                 self._log.debug(f"response received result={as_hex_string(result)}")
-                return result
+                return payload
 
             finally:
                 self._pending_future = None
