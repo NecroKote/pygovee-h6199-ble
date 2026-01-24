@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TypeVar, overload
+from typing import NamedTuple, TypeVar, overload
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -15,6 +15,13 @@ def as_hex_string(v: bytes):
 
 
 T = TypeVar("T")
+
+
+class CommandTimeouts(NamedTuple):
+    """Timeouts for a command in seconds."""
+
+    write: float | None = None
+    response: float | None = 5.0
 
 
 class GoveeH6199:
@@ -74,8 +81,8 @@ class GoveeH6199:
         self,
         cmd: int,
         group: int,
-        payload: list[int] | None = None,
-        timeout: float | None = 5.0,
+        payload: list[int],
+        timeouts: CommandTimeouts,
     ):
         frame = make_frame(cmd, group, payload or [])
 
@@ -89,12 +96,17 @@ class GoveeH6199:
 
             self._log.debug("sending ...")
             try:
-                await self._client.write_gatt_char(
-                    UUID_CONTROL_CHARACTERISTIC, frame, response=True
+                await asyncio.wait_for(
+                    self._client.write_gatt_char(
+                        UUID_CONTROL_CHARACTERISTIC, frame, response=True
+                    ),
+                    timeout=timeouts.write,
                 )
 
                 self._log.debug("sent, waiting for response ...")
-                result = await asyncio.wait_for(self._pending_future, timeout=timeout)
+                result = await asyncio.wait_for(
+                    self._pending_future, timeout=timeouts.response
+                )
                 self._log.debug("response resolved")
                 return result
 
@@ -102,35 +114,55 @@ class GoveeH6199:
                 self._pending_future = None
 
     @overload
-    async def send_command(self, command: CommandWithParser[T]) -> T: ...
-
-    @overload
     async def send_command(
-        self, command: CommandWithParser[T], timeout: float
+        self,
+        command: CommandWithParser[T],
+        timeouts: CommandTimeouts = CommandTimeouts(),
     ) -> T: ...
 
     @overload
     async def send_command(
-        self, command: CommandWithParser[T], timeout=-1
+        self,
+        command: CommandWithParser[T],
+        timeouts=None,
     ) -> None | T: ...
 
-    async def send_command(self, command: Command, timeout: float = 5.0):
+    @overload
+    async def send_command(
+        self,
+        command: Command,
+        timeouts: CommandTimeouts = CommandTimeouts(),
+    ) -> bytes: ...
+
+    @overload
+    async def send_command(
+        self,
+        command: Command,
+        timeouts=None,
+    ) -> None | bytes: ...
+
+    async def send_command(
+        self, command: Command, timeouts: CommandTimeouts | None = CommandTimeouts()
+    ):
         """
         Sends a command and waits for its response.
 
         If the command is an instance of CommandWithParser, the response will be
         parsed using the command's parse_response method.
 
-        If timeout is -1, the method will return `None` on timeout instead of raising
+        If timeouts is `None`, the method will return `None` on timeout instead of raising
         an exception.
         """
 
         self._log.debug(f"send_command cmd={command}")
         cmd, group, payload = command.payload()
+        effective_timeouts = timeouts or CommandTimeouts(None, None)
         try:
-            response = await self.command_with_reply(cmd, group, payload, timeout)
+            response = await self.command_with_reply(
+                cmd, group, payload, effective_timeouts
+            )
         except asyncio.TimeoutError:
-            if timeout == -1:
+            if timeouts is None:
                 return None
 
             raise
@@ -140,13 +172,33 @@ class GoveeH6199:
 
         return response
 
-    async def send_commands(self, commands: list[Command], timeout: float = 5.0):
+    async def send_commands(
+        self,
+        commands: list[Command],
+        command_timeouts: CommandTimeouts | None = CommandTimeouts(),
+    ):
+        """
+        Sends multiple commands sequentially and waits for their responses.
+        If command_timeouts is `None`, the method will return `None` for any command that
+        times out instead of raising an exception.
+
+        Returns a list of responses corresponding to each command.
+        """
+        effective_timeouts = command_timeouts or CommandTimeouts(None, None)
+
+        responses = []
         for command in commands:
             cmd, group, payload = command.payload()
             try:
-                await self.command_with_reply(cmd, group, payload, timeout)
+                response = await self.command_with_reply(
+                    cmd, group, payload, effective_timeouts
+                )
+                responses.append(response)
             except asyncio.TimeoutError:
-                if timeout == -1:
-                    pass
+                if command_timeouts is None:
+                    responses.append(None)
+                    continue
 
                 raise
+
+        return responses
