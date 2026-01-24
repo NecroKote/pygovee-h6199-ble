@@ -8,6 +8,7 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 
 from .commands import Command, CommandWithParser
 from .const import UUID_CONTROL_CHARACTERISTIC, UUID_NOTIFY_CHARACTERISTIC
+from .packet import make_frame
 
 
 def as_hex_string(v: bytes):
@@ -56,27 +57,6 @@ class GoveeH6199:
                 # Already completed/cancelled elsewhere; ignore duplicate/late notify.
                 pass
 
-    def _cs(self, data: bytes):
-        checksum = 0
-        for b in data:
-            checksum ^= b
-        return checksum & 0xFF
-
-    def _frame(self, cmd: int, group: int, payload: list[int]) -> bytes:
-        if len(payload) > 17:
-            raise ValueError("Payload too long")
-
-        frame = bytearray(20)
-        frame[0] = cmd
-        frame[1] = group & 0xFF
-
-        for idx, byte in enumerate(payload):
-            frame[idx + 2] = byte
-
-        frame[19] = self._cs(frame[:-1])
-
-        return bytes(frame)
-
     def _on_timeout(self, future: asyncio.Future[bytes]):
         if not future.done():
             future.set_exception(asyncio.TimeoutError("Timeout waiting for response"))
@@ -85,7 +65,7 @@ class GoveeH6199:
         self, cmd: int, group: int, payload: list[int] | None = None, timeout=5.0
     ):
         key = (cmd, group)
-        frame = self._frame(cmd, group, payload or [])
+        frame = make_frame(cmd, group, payload or [])
         if _ := self._pending_commands.get(key):
             self._log.warning(f"({cmd}, {group}) already pending response")
             raise ValueError("already pending response")
