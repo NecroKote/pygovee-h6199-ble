@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import NamedTuple, TypeVar, overload
+from typing import NamedTuple, Sequence, TypeVar, overload
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -77,18 +77,12 @@ class GoveeH6199:
 
         pending.set_result(bytes(payload))
 
-    async def command_with_reply(
+    async def exchange_frame(
         self,
-        cmd: int,
-        group: int,
-        payload: list[int],
+        frame: bytes,
         timeouts: CommandTimeouts,
     ):
-        frame = make_frame(cmd, group, payload or [])
-
-        self._log.debug(
-            f"command_with_reply cmd={cmd:02x} group={group:02x} frame={as_hex_string(frame)}"
-        )
+        self._log.debug(f"exchange_frame frame={as_hex_string(frame)}")
 
         await self._notify_condition.wait_for(lambda: self._notify_started)
         async with self._lock:
@@ -107,7 +101,7 @@ class GoveeH6199:
                 result = await asyncio.wait_for(
                     self._pending_future, timeout=timeouts.response
                 )
-                self._log.debug("response resolved")
+                self._log.debug(f"response received result={as_hex_string(result)}")
                 return result
 
             finally:
@@ -155,12 +149,13 @@ class GoveeH6199:
         """
 
         self._log.debug(f"send_command cmd={command}")
+
         cmd, group, payload = command.payload()
+        frame = make_frame(cmd, group, payload or [])
+
         effective_timeouts = timeouts or CommandTimeouts(None, None)
         try:
-            response = await self.command_with_reply(
-                cmd, group, payload, effective_timeouts
-            )
+            response = await self.exchange_frame(frame, effective_timeouts)
         except asyncio.TimeoutError:
             if timeouts is None:
                 return None
@@ -174,31 +169,23 @@ class GoveeH6199:
 
     async def send_commands(
         self,
-        commands: list[Command],
+        commands: Sequence[Command],
         command_timeouts: CommandTimeouts | None = CommandTimeouts(),
     ):
         """
         Sends multiple commands sequentially and waits for their responses.
+        Returns a list of responses corresponding to each command.
+
+        If the command is an instance of CommandWithParser, the response will be
+        parsed using the command's parse_response method.
+
         If command_timeouts is `None`, the method will return `None` for any command that
         times out instead of raising an exception.
-
-        Returns a list of responses corresponding to each command.
         """
-        effective_timeouts = command_timeouts or CommandTimeouts(None, None)
 
         responses = []
         for command in commands:
-            cmd, group, payload = command.payload()
-            try:
-                response = await self.command_with_reply(
-                    cmd, group, payload, effective_timeouts
-                )
-                responses.append(response)
-            except asyncio.TimeoutError:
-                if command_timeouts is None:
-                    responses.append(None)
-                    continue
-
-                raise
+            result = await self.send_command(command, command_timeouts)
+            responses.append(result)
 
         return responses
