@@ -1,8 +1,8 @@
 [project]
 name = "govee-h6199-ble"
-version = "0.3.0"
+version = "1.0.0"
 license = { file = "LICENSE" }
-keywords = ["ble", "govee"]
+keywords = ["ble", "govee", "h6199", "dreamview"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -10,7 +10,6 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -24,7 +23,7 @@ Issues = "https://github.com/NecroKote/pygovee-h6199-ble/issues"
 
 [tool.poetry]
 name = "govee-h6199-ble"
-version = "0.3.0"
+version = "1.0.0"
 description = "Manage Govee DreamView T1 (H6199) BLE devices"
 authors = ["Mikalai Kukhta <mikalai.kukhta@gmail.com>"]
 readme = "README.md"
