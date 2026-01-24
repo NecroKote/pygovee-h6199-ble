@@ -1,7 +1,6 @@
 import asyncio
 import logging
-from functools import partial
-from typing import TypeAlias, TypeVar, overload
+from typing import TypeVar, overload
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -16,7 +15,6 @@ def as_hex_string(v: bytes):
 
 
 T = TypeVar("T")
-CommandKey: TypeAlias = tuple[int, int]
 
 
 class GoveeH6199:
@@ -24,80 +22,84 @@ class GoveeH6199:
         self._log = logger or logging.getLogger(__name__ + "@" + str(id(self)))
         self._client = client
 
-        self._loop = asyncio.get_running_loop()
-        self._pending_commands: dict[CommandKey, asyncio.Future[bytes]] = {}
+        self._lock = asyncio.Lock()
+        self._notify_started = False
+        self._notify_condition = asyncio.Condition()
+        self._pending_future: asyncio.Future[bytes] | None = None
 
     async def start(self):
-        await self._client.start_notify(
-            UUID_NOTIFY_CHARACTERISTIC, self._handle_response
-        )
+        self._log.debug("start ...")
+        async with self._notify_condition:
+            if self._notify_started:
+                self._log.debug("already started")
+                return
 
-    async def stop(self):
-        if self._client.is_connected:
-            await self._client.stop_notify(UUID_NOTIFY_CHARACTERISTIC)
-
-    def _handle_response(self, sender: BleakGATTCharacteristic, data: bytearray):
-        cmd = data[0]
-        group = data[1]
-        payload = bytes(data[2:-1])
-
-        self._log.debug(
-            f"recv: {as_hex_string(data)} (cmd={cmd:02x} group={group:02x})"
-        )
-
-        if (
-            # Pop the waiter so a duplicate notification won't try to complete it again.
-            (waiting := self._pending_commands.pop((cmd, group), None))
-            # Complete only if still pending.
-            and not (waiting.cancelled() or waiting.done())
-        ):
-            try:
-                waiting.set_result(payload)
-            except asyncio.InvalidStateError:
-                # Already completed/cancelled elsewhere; ignore duplicate/late notify.
-                pass
-
-    def _on_timeout(self, future: asyncio.Future[bytes]):
-        if not future.done():
-            future.set_exception(asyncio.TimeoutError("Timeout waiting for response"))
-
-    async def command_with_reply(
-        self, cmd: int, group: int, payload: list[int] | None = None, timeout=5.0
-    ):
-        key = (cmd, group)
-        frame = make_frame(cmd, group, payload or [])
-        if _ := self._pending_commands.get(key):
-            self._log.warning(f"({cmd}, {group}) already pending response")
-            raise ValueError("already pending response")
-
-        future: asyncio.Future[bytes] = self._loop.create_future()
-        self._pending_commands[key] = future
-
-        self._log.debug(f"send: {as_hex_string(frame)}")
-        await self._client.write_gatt_char(
-            UUID_CONTROL_CHARACTERISTIC, frame, response=True
-        )
-
-        # Schedule timeout only when timeout >= 0
-        timer_handle = None
-        if timeout >= 0:
-            timer_handle = self._loop.call_later(
-                timeout, partial(self._on_timeout, future)
+            await self._client.start_notify(
+                UUID_NOTIFY_CHARACTERISTIC, self._handle_response
             )
 
-        try:
-            await future
+            self._notify_started = True
+            self._notify_condition.notify_all()
 
-        finally:
-            # Only remove if it still points to *this* future
-            cur = self._pending_commands.get(key)
-            if cur is future:
-                self._pending_commands.pop(key, None)
+        self._log.debug("start done")
 
-            if timer_handle:
-                timer_handle.cancel()
+    async def stop(self):
+        self._log.debug("stop ...")
 
-        return future.result()
+        async with self._notify_condition:
+            if not self._notify_started:
+                self._log.debug("already stopped")
+                return
+
+            self._log.debug("stopping notify ...")
+            await self._client.stop_notify(UUID_NOTIFY_CHARACTERISTIC)
+
+            self._notify_started = False
+            self._notify_condition.notify_all()
+
+        self._log.debug("stop done")
+
+    def _handle_response(self, sender: BleakGATTCharacteristic, data: bytearray):
+        if (pending := self._pending_future) is None:
+            raise RuntimeError("Received notification with no pending command")
+
+        cmd, group, *payload, _ = data
+        self._log.debug(
+            f"response cmd={cmd:02x} group={group:02x} frame={as_hex_string(data)})"
+        )
+
+        pending.set_result(bytes(payload))
+
+    async def command_with_reply(
+        self,
+        cmd: int,
+        group: int,
+        payload: list[int] | None = None,
+        timeout: float | None = 5.0,
+    ):
+        frame = make_frame(cmd, group, payload or [])
+
+        self._log.debug(
+            f"command_with_reply cmd={cmd:02x} group={group:02x} frame={as_hex_string(frame)}"
+        )
+
+        await self._notify_condition.wait_for(lambda: self._notify_started)
+        async with self._lock:
+            self._pending_future = asyncio.get_running_loop().create_future()
+
+            self._log.debug("sending ...")
+            try:
+                await self._client.write_gatt_char(
+                    UUID_CONTROL_CHARACTERISTIC, frame, response=True
+                )
+
+                self._log.debug("sent, waiting for response ...")
+                result = await asyncio.wait_for(self._pending_future, timeout=timeout)
+                self._log.debug("response resolved")
+                return result
+
+            finally:
+                self._pending_future = None
 
     @overload
     async def send_command(self, command: CommandWithParser[T]) -> T: ...
@@ -113,6 +115,17 @@ class GoveeH6199:
     ) -> None | T: ...
 
     async def send_command(self, command: Command, timeout: float = 5.0):
+        """
+        Sends a command and waits for its response.
+
+        If the command is an instance of CommandWithParser, the response will be
+        parsed using the command's parse_response method.
+
+        If timeout is -1, the method will return `None` on timeout instead of raising
+        an exception.
+        """
+
+        self._log.debug(f"send_command cmd={command}")
         cmd, group, payload = command.payload()
         try:
             response = await self.command_with_reply(cmd, group, payload, timeout)
