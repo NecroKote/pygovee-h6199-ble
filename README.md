@@ -41,52 +41,72 @@ More information can be found by inspecting the `govee_h6199_ble.commands` packa
 
 ### Example
 ```python
-from bleak import BleakClient, BleakScanner
-from govee_h6199_ble import GoveeH6199, GetFirmwareVersion, PowerOn, PowerOff
+import asyncio
 
-if __name__ == '__main__':
+from bleak import BleakClient, BleakScanner
+
+from govee_h6199_ble import (
+    GetFirmwareVersion,
+    GetHardwareVersion,
+    GetPowerState,
+    PowerOff,
+    PowerOn,
+    connected,
+)
+
+
+async def main():
     # scan and find first usable device
     devices = await BleakScanner.discover()
-    named_devices = (device for device in devices if device.name)
+    named_devices = ((device, device.name) for device in devices if device.name)
     h6199_devices = (
-        device for device in named_devices
-        if device.name.startswith("Govee_H6199")
+        device for device, name in named_devices if name.startswith("Govee_H6199")
     )
 
-    if device := next(h6199_devices, None):
+    if first_device := next(h6199_devices, None):
         # connect
         async with BleakClient(first_device) as client:
-            async with connected(client) as h6199:
+            async with connected(client) as device:
                 power = await device.send_command(GetPowerState())
                 if power:
                     print("power on")
 
-                    # get firmware version
-                    fw_version = await device.send_command(GetFirmwareVersion())
-                    print(fw_version)
+                    # get firmware version and turn device off
+                    fw_version, hw_version, _ = await device.send_commands(
+                        [GetFirmwareVersion(), GetHardwareVersion(), PowerOff()]
+                    )
 
-                    # turn off
-                    await device.send_command(PowerOff())
+                    print(fw_version, hw_version)
                 else:
 
                     # turn on
                     await device.send_command(PowerOn())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-The chain of commands can be sent using `send_commands` but in this mode you will not receive any responses.
 
-You can also run raw commands using:
+## Exchanging raw frames
+You can also exchange raw frames with the device using:
 ```python
-async def command_with_reply(
+async def exchange_frame(
     self,
-    cmd: int,
-    group: int,
-    payload: list[int] | None = None,
-    timeout=5.0,
+    frame: bytes,
+    timeouts: CommandTimeouts,
 ) -> bytes:...
 ```
 and inspect responses manually.
-Be aware, if the command is not implemented in the device this call command will raise `asyncio.TimeoutError`, since response will not be received.
+
+> **Be aware**, if the command is not implemented on the device this call command will raise `asyncio.TimeoutError`, since response will not be received.
+
+## Timeouts
+By default, the client uses the following timeouts:
+- command send timeout: None
+- response receive timeout: 5 seconds
+
+You can customize these timeouts by passing a `CommandTimeouts` instance to the `send_command(s)` calls.
 
 ## Credits
 Govee for the device and the app.
