@@ -91,9 +91,8 @@ class GoveeH6199:
             self._log.debug("sending ...")
             try:
                 await asyncio.wait_for(
-                    self._client.write_gatt_char(
-                        UUID_CONTROL_CHARACTERISTIC, frame, response=True
-                    ),
+                    # HINT: was using response=True before but it seems not needed
+                    self._client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, frame),
                     timeout=timeouts.write,
                 )
 
