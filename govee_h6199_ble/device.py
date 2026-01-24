@@ -68,7 +68,7 @@ class GoveeH6199:
 
     def _handle_response(self, sender: BleakGATTCharacteristic, data: bytearray):
         if (pending := self._pending_future) is None:
-            raise RuntimeError("Received notification with no pending command")
+            return
 
         cmd, group, *payload, _ = data
         self._log.debug(
