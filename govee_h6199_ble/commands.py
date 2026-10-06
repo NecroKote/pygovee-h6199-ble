@@ -18,9 +18,9 @@ class GetStatus(CommandWithParser[bytes]):
     and `domain` as the first byte
     """
 
-    def __init__(self, domain: int, payload: list[int] = []):
+    def __init__(self, domain: int, payload: list[int] | None = None):
         self._domain = domain
-        self._payload = payload
+        self._payload = payload or []
 
     def payload(self):
         return CommandPayload(PacketHeader.STATUS, self._domain, self._payload)
@@ -122,23 +122,33 @@ class GetColorMode(CommandWithParser[Modes]):
         return CommandPayload(PacketHeader.STATUS, PacketType.COLOR, [])
 
     def parse_response(self, response):
-        mode = ColorMode(response[0])
+        try:
+            mode = ColorMode(response[0])
+        except ValueError:
+            return UnknownColorMode(response[0])
+
         match mode:
             case ColorMode.VIDEO:
-                full_screen = bool(response[1])
-                game_mode = bool(response[2])
-                saturation = response[3]
-                return VideoColorMode(full_screen, game_mode, saturation)
+                return VideoColorMode(
+                    full_screen=bool(response[1]),
+                    game_mode=bool(response[2]),
+                    saturation=response[3],
+                    sound_effects=bool(response[4]),
+                    sound_effects_softness=response[5],
+                    brightness=response[6],
+                )
 
             case ColorMode.MUSIC:
-                music_mode = MusicMode(response[1])
-                return MusicColorMode(music_mode)
+                try:
+                    return MusicColorMode(MusicMode(response[1]))
+                except ValueError:
+                    return UnknownColorMode(response[0])
 
             case ColorMode.STATIC:
                 # HINT: the current fw version (1.10.04) doesn't seem to return the static color
                 return StaticColorMode()
 
-        return UnknownColorMode(mode)
+        return UnknownColorMode(response[0])
 
 
 class SetStaticColor(Command):
@@ -163,11 +173,11 @@ class SetMusicModeRythm(Command):
     def __init__(
         self,
         calm: bool = True,
-        sensitivity: int = 100,
+        sensitivity: int = 99,
         rgb_color: RGBColor | None = None,
     ):
-        if not 0 <= sensitivity <= 100:
-            raise ValueError("sensitivity must be 0-100")
+        if not 0 <= sensitivity <= 99:
+            raise ValueError("sensitivity must be 0-99")
 
         self._calm = calm
         self._color = rgb_color
@@ -186,9 +196,9 @@ class SetMusicModeRythm(Command):
 class SetMusicModeEnergic(Command):
     """Switch the device in the Music mode with Energic effect"""
 
-    def __init__(self, sensitivity: int = 100):
-        if not 0 <= sensitivity <= 100:
-            raise ValueError("sensitivity must be 0-100")
+    def __init__(self, sensitivity: int = 99):
+        if not 0 <= sensitivity <= 99:
+            raise ValueError("sensitivity must be 0-99")
 
         self._sensitivity = sensitivity
 
@@ -205,11 +215,11 @@ class SetMusicModeSpectrum(Command):
 
     def __init__(
         self,
-        sensitivity: int = 100,
+        sensitivity: int = 99,
         rgb_color: RGBColor | None = None,
     ):
-        if not 0 <= sensitivity <= 100:
-            raise ValueError("sensitivity must be 0-100")
+        if not 0 <= sensitivity <= 99:
+            raise ValueError("sensitivity must be 0-99")
 
         self._color = rgb_color
         self._sensitivity = sensitivity
@@ -233,11 +243,11 @@ class SetMusicModeRolling(Command):
 
     def __init__(
         self,
-        sensitivity: int = 100,
+        sensitivity: int = 99,
         rgb_color: RGBColor | None = None,
     ):
-        if not 0 <= sensitivity <= 100:
-            raise ValueError("sensitivity must be 0-100")
+        if not 0 <= sensitivity <= 99:
+            raise ValueError("sensitivity must be 0-99")
 
         self._color = rgb_color
         self._sensitivity = sensitivity
@@ -257,27 +267,39 @@ class SetMusicModeRolling(Command):
 
 
 class SetVideoMode(Command):
-    """Switch the device in the Video mode a.k.a Camera mode"""
+    """
+    Switch the device in the Video mode a.k.a Camera mode
+
+    :param saturation: 1-100
+    :param sound_effects_softness: 1-100
+    :param brightness: 1-100, relative brightness. Only honored by firmware that
+        carries it in this frame (Telink); leave `None` otherwise
+    """
 
     def __init__(
         self,
         full_screen: bool = True,
         game_mode: bool = False,
-        saturation: int = 100,
+        saturation: int = 50,
         sound_effects: bool = False,
-        sound_effects_softness: int = 0,
+        sound_effects_softness: int = 50,
+        brightness: int | None = None,
     ):
-        if not 0 <= saturation <= 100:
-            raise ValueError("saturation must be 0-100")
+        if not 1 <= saturation <= 100:
+            raise ValueError("saturation must be 1-100")
 
-        if not 0 <= sound_effects_softness <= 100:
-            raise ValueError("sound_effects_softness must be 0-100")
+        if not 1 <= sound_effects_softness <= 100:
+            raise ValueError("sound_effects_softness must be 1-100")
+
+        if brightness is not None and not 1 <= brightness <= 100:
+            raise ValueError("brightness must be 1-100")
 
         self._full_screen = full_screen
         self._saturation = saturation
         self._game_mode = game_mode
         self._sound_effects = sound_effects
         self._sound_effects_softness = sound_effects_softness
+        self._brightness = brightness
 
     def payload(self):
         pkt = [
@@ -285,9 +307,11 @@ class SetVideoMode(Command):
             int(self._full_screen),
             int(self._game_mode),
             self._saturation,
+            int(self._sound_effects),
+            self._sound_effects_softness,
         ]
 
-        if self._sound_effects:
-            pkt += [0x01, self._sound_effects_softness]
+        if self._brightness is not None:
+            pkt.append(self._brightness)
 
         return CommandPayload(PacketHeader.COMMAND, PacketType.COLOR, pkt)

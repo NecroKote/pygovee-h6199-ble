@@ -7,15 +7,15 @@ def checksum(data: bytes):
     return checksum & 0xFF
 
 
-def make_frame(cmd: int, group: int, payload: list[int]) -> bytes:
-    """Construct a 20-byte frame with given command, group, and payload."""
+def make_frame(header: int, command: int, payload: list[int]) -> bytes:
+    """Construct a 20-byte frame with given header, command id, and payload."""
 
     if len(payload) > 17:
         raise ValueError("Payload too long")
 
     frame = bytearray(20)
-    frame[0] = cmd
-    frame[1] = group & 0xFF
+    frame[0] = header & 0xFF
+    frame[1] = command & 0xFF
 
     for idx, byte in enumerate(payload):
         frame[idx + 2] = byte
@@ -26,7 +26,7 @@ def make_frame(cmd: int, group: int, payload: list[int]) -> bytes:
 
 
 def unpack_frame(frame: bytes) -> tuple[int, int, bytes]:
-    """Unpack a response frame into command, group, and payload."""
+    """Unpack a response frame into header, command id, and payload."""
 
-    cmd, group, *payload, _ = frame
-    return cmd, group, bytes(payload)
+    header, command, *payload, _ = frame
+    return header, command, bytes(payload)

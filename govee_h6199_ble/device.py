@@ -32,6 +32,7 @@ class GoveeH6199:
         self._notify_started = False
         self._notify_condition = asyncio.Condition()
         self._pending_future: asyncio.Future[bytes] | None = None
+        self._pending_command: int | None = None
 
     async def start(self):
         self._log.debug("start ...")
@@ -66,8 +67,16 @@ class GoveeH6199:
         self._log.debug("stop done")
 
     def _handle_response(self, _, data: bytearray):
-        if pending := self._pending_future:
-            pending.set_result(data)
+        pending = self._pending_future
+        if pending is None or pending.done():
+            return
+
+        # ignore notifications answering some other command
+        if len(data) < 2 or data[1] != self._pending_command:
+            self._log.debug(f"ignoring unrelated notification {as_hex_string(data)}")
+            return
+
+        pending.set_result(bytes(data))
 
     async def exchange_frame(
         self,
@@ -78,6 +87,7 @@ class GoveeH6199:
 
         await self._notify_condition.wait_for(lambda: self._notify_started)
         async with self._lock:
+            self._pending_command = frame[1]
             self._pending_future = asyncio.get_running_loop().create_future()
 
             self._log.debug("sending ...")
@@ -93,9 +103,9 @@ class GoveeH6199:
                     self._pending_future, timeout=timeouts.response
                 )
 
-                cmd, group, payload = unpack_frame(result)
+                header, command, payload = unpack_frame(result)
                 self._log.debug(
-                    f"response cmd={cmd:02x} group={group:02x} frame={as_hex_string(payload)})"
+                    f"response header={header:02x} cmd={command:02x} payload={as_hex_string(payload)}"
                 )
 
                 self._log.debug(f"response received result={as_hex_string(result)}")
@@ -103,6 +113,7 @@ class GoveeH6199:
 
             finally:
                 self._pending_future = None
+                self._pending_command = None
 
     @overload
     async def send_command(
@@ -147,8 +158,8 @@ class GoveeH6199:
 
         self._log.debug(f"send_command cmd={command}")
 
-        cmd, group, payload = command.payload()
-        frame = make_frame(cmd, group, payload or [])
+        header, domain, payload = command.payload()
+        frame = make_frame(header, domain, payload or [])
 
         effective_timeouts = timeouts or CommandTimeouts(None, None)
         try:

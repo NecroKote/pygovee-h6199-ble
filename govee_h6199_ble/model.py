@@ -13,6 +13,9 @@ class VideoColorMode:
     full_screen: bool
     game_mode: bool
     saturation: int
+    sound_effects: bool = False
+    sound_effects_softness: int = 0
+    brightness: int = 0
 
 
 @dataclass
@@ -29,7 +32,7 @@ class StaticColorMode:
 
 @dataclass
 class UnknownColorMode:
-    mode: int
+    mode: int  # raw sub-mode byte
 
 
 Modes: TypeAlias = VideoColorMode | MusicColorMode | StaticColorMode | UnknownColorMode

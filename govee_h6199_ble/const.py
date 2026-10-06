@@ -17,12 +17,20 @@ class PacketType(IntEnum):
     FW = 0x06
     HW = 0x07
     MAC = 0x014
+    GRADIENT = 0xA3
+    ZONE_COLORS = 0xA5
+    VIDEO_PARAMS = 0xA9
+    ZONE_RELATIVE_BRIGHTNESS = 0xAE
     HW_LOW = 0x20
     HW_HI = 0x21
 
 
 class ColorMode(IntEnum):
     VIDEO = 0x00
+    SCENE = 0x04
+    DIY = 0x0A
+    STATIC_V1 = 0x0B
+    MUSIC_LEGACY = 0x0C
     MUSIC = 0x13
     STATIC = 0x15
 
