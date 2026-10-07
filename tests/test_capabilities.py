@@ -39,8 +39,12 @@ def test_frk_ai_variant_needs_pact_for_scenes():
     assert caps.service_scenes
     # AI effects follow the soft-version rule, not the pact
     assert caps.ai_effects
-    assert not Capabilities.from_info(info("1.07.01", "3.04.01", pact=Pact(3, 1))).ai_effects
-    assert Capabilities.from_info(info("1.07.01", "3.04.01", pact=Pact(4, 1))).ai_effects
+    assert not Capabilities.from_info(
+        info("1.07.01", "3.04.01", pact=Pact(3, 1))
+    ).ai_effects
+    assert Capabilities.from_info(
+        info("1.07.01", "3.04.01", pact=Pact(4, 1))
+    ).ai_effects
 
 
 def test_telink_video_brightness_pact_v1_only():
@@ -50,9 +54,13 @@ def test_telink_video_brightness_pact_v1_only():
 
 
 def test_zone_brightness_needs_v2():
-    assert not Capabilities.from_info(info("1.10.04", "3.02.01", pact=Pact(1, 1))).zone_brightness
-    assert Capabilities.from_info(info("1.10.04", "3.02.01", pact=Pact(2, 1))).zone_brightness
-    assert Capabilities.from_info(info("1.10.04", "3.02.01")).zone_brightness
+    assert not Capabilities.from_info(
+        info("1.10.04", "3.02.01", pact=Pact(1, 1))
+    ).zone_brightness
+    assert Capabilities.from_info(
+        info("1.10.04", "3.02.01", pact=Pact(2, 1))
+    ).zone_brightness
+    assert not Capabilities.from_info(info("1.10.04", "3.02.01")).zone_brightness
 
 
 def test_unknown_chip_gets_nothing():

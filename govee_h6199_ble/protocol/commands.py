@@ -1,8 +1,26 @@
 import re
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
-from .colortemp import MIN_KELVIN, kelvin_for_color, tint_for_kelvin
+from ..model import (
+    LOW_BRIGHTNESS_SECONDS,
+    SAME_TONE_SECONDS,
+    WHITE_BALANCE_MAX,
+    BlackScreenMode,
+    BlackScreenSetting,
+    EdgeBrightness,
+    Modes,
+    MusicColorMode,
+    Pact,
+    RGBColor,
+    StaticColorMode,
+    UnknownColorMode,
+    VideoColorMode,
+    WhiteBalance,
+    WhiteBalanceState,
+    ZoneState,
+)
 from .base import Command, CommandPayload, CommandWithParser
+from .colortemp import MIN_KELVIN, kelvin_for_color, tint_for_kelvin
 from .const import (
     ZONE_COUNT,
     ZONE_GROUP_SIZE,
@@ -11,25 +29,8 @@ from .const import (
     MusicMode,
     PacketHeader,
     PacketType,
+    ProtocolGeneration,
     VideoParam,
-)
-from ..model import (
-    LOW_BRIGHTNESS_SECONDS,
-    SAME_TONE_SECONDS,
-    BlackScreenMode,
-    BlackScreenSetting,
-    EdgeBrightness,
-    Modes,
-    Pact,
-    WHITE_BALANCE_MAX,
-    WhiteBalance,
-    WhiteBalanceState,
-    MusicColorMode,
-    RGBColor,
-    StaticColorMode,
-    UnknownColorMode,
-    VideoColorMode,
-    ZoneState,
 )
 from .packet import zone_mask
 
@@ -149,7 +150,7 @@ class GetMacAddress(CommandWithParser[str]):
 
     def parse_response(self, response: bytes):
         raw = response[:6]
-        return ":".join((f"{x:02x}" for x in raw))
+        return ":".join(f"{x:02x}" for x in raw)
 
 
 class SetBrightness(Command):
@@ -211,10 +212,10 @@ class GetColorMode(CommandWithParser[Modes]):
                 return VideoColorMode(
                     full_screen=bool(response[1]),
                     game_mode=bool(response[2]),
-                    saturation=response[3],
+                    saturation=response[3] or None,
                     sound_effects=bool(response[4]),
-                    sound_effects_softness=response[5],
-                    brightness=response[6],
+                    sound_effects_softness=response[5] or None,
+                    brightness=response[6] or None,
                 )
 
             case ColorMode.MUSIC:
@@ -234,29 +235,6 @@ class GetColorMode(CommandWithParser[Modes]):
 
         return UnknownColorMode(response[0])
 
-        match mode:
-            case ColorMode.VIDEO:
-                return VideoColorMode(
-                    full_screen=bool(response[1]),
-                    game_mode=bool(response[2]),
-                    saturation=response[3],
-                    sound_effects=bool(response[4]),
-                    sound_effects_softness=response[5],
-                    brightness=response[6],
-                )
-
-            case ColorMode.MUSIC:
-                try:
-                    return MusicColorMode(MusicMode(response[1]))
-                except ValueError:
-                    return UnknownColorMode(response[0])
-
-            case ColorMode.STATIC:
-                # HINT: the current fw version (1.10.04) doesn't seem to return the static color
-                return StaticColorMode()
-
-        return UnknownColorMode(response[0])
-
 
 class SetStaticColor(Command):
     """Switch the device in the Static Color mode"""
@@ -264,15 +242,19 @@ class SetStaticColor(Command):
     def __init__(
         self,
         rgb_color: RGBColor,
+        generation: ProtocolGeneration = ProtocolGeneration.V2,
     ):
-        self._color = rgb_color
+        command = (
+            SetZoneColorV1 if generation == ProtocolGeneration.V1 else SetZoneColor
+        )
+        self._command = command(rgb_color)
 
     def payload(self):
-        return SetZoneColor(self._color).payload()
+        return self._command.payload()
 
 
-class SetMusicModeRythm(Command):
-    """Switch the device in the Music mode with Rythm effect"""
+class SetMusicModeRhythm(Command):
+    """Switch the device in the Music mode with Rhythm effect"""
 
     def __init__(
         self,
@@ -284,11 +266,13 @@ class SetMusicModeRythm(Command):
             raise ValueError("sensitivity must be 0-99")
 
         self._calm = calm
+        if rgb_color is not None:
+            SetZoneColor(rgb_color)
         self._color = rgb_color
         self._sensitivity = sensitivity
 
     def payload(self):
-        pkt = [ColorMode.MUSIC, MusicMode.RYTHM, self._sensitivity, int(self._calm)]
+        pkt = [ColorMode.MUSIC, MusicMode.RHYTHM, self._sensitivity, int(self._calm)]
 
         if self._color:
             r, g, b = self._color
@@ -325,6 +309,8 @@ class SetMusicModeSpectrum(Command):
         if not 0 <= sensitivity <= 99:
             raise ValueError("sensitivity must be 0-99")
 
+        if rgb_color is not None:
+            SetZoneColor(rgb_color)
         self._color = rgb_color
         self._sensitivity = sensitivity
 
@@ -353,6 +339,8 @@ class SetMusicModeRolling(Command):
         if not 0 <= sensitivity <= 99:
             raise ValueError("sensitivity must be 0-99")
 
+        if rgb_color is not None:
+            SetZoneColor(rgb_color)
         self._color = rgb_color
         self._sensitivity = sensitivity
 
@@ -438,7 +426,9 @@ class SetZoneColor(Command):
     """
 
     def __init__(self, rgb_color: RGBColor, zones: Iterable[int] | None = None):
-        if not all(0 <= c <= 255 for c in rgb_color):
+        if len(rgb_color) != 3 or not all(
+            isinstance(c, int) and 0 <= c <= 255 for c in rgb_color
+        ):
             raise ValueError("color components must be 0-255")
 
         self._color = rgb_color
@@ -588,7 +578,9 @@ class SetZoneColorV1(Command):
     """
 
     def __init__(self, rgb_color: RGBColor, zones: Iterable[int] | None = None):
-        if not all(0 <= c <= 255 for c in rgb_color):
+        if len(rgb_color) != 3 or not all(
+            isinstance(c, int) and 0 <= c <= 255 for c in rgb_color
+        ):
             raise ValueError("color components must be 0-255")
 
         self._color = rgb_color
@@ -596,7 +588,12 @@ class SetZoneColorV1(Command):
 
     def payload(self):
         kelvin = kelvin_for_color(self._color) or MIN_KELVIN
-        pkt = [ColorMode.STATIC_V1, *self._color, *kelvin.to_bytes(2, "big"), *self._mask]
+        pkt = [
+            ColorMode.STATIC_V1,
+            *self._color,
+            *kelvin.to_bytes(2, "big"),
+            *self._mask,
+        ]
 
         return CommandPayload(PacketHeader.COMMAND, PacketType.COLOR, pkt)
 
@@ -633,7 +630,9 @@ class GetWhiteBalance(CommandWithParser[WhiteBalanceState]):
     def parse_response(self, response: bytes):
         # [type, length, defAuto, defR, defB, manual, R, B]
         _, _, _, def_red, def_blue, manual, red, blue = response[:8]
-        return WhiteBalanceState(WhiteBalance(not manual, red, blue), (def_red, def_blue))
+        return WhiteBalanceState(
+            WhiteBalance(not manual, red, blue), (def_red, def_blue)
+        )
 
 
 class SetWholeScreenBrightness(Command):
@@ -740,7 +739,11 @@ class SetBlackScreen(Command):
 
     def __init__(self, setting: BlackScreenSetting):
         for name, value, (low, high, _) in (
-            ("low_brightness_seconds", setting.low_brightness_seconds, LOW_BRIGHTNESS_SECONDS),
+            (
+                "low_brightness_seconds",
+                setting.low_brightness_seconds,
+                LOW_BRIGHTNESS_SECONDS,
+            ),
             ("same_tone_seconds", setting.same_tone_seconds, SAME_TONE_SECONDS),
         ):
             if not low <= value <= high:
@@ -780,3 +783,6 @@ class GetBlackScreen(CommandWithParser[BlackScreenSetting]):
             int.from_bytes(response[4:6], "little"),
             int.from_bytes(response[6:8], "little"),
         )
+
+
+SetMusicModeRythm = SetMusicModeRhythm  # deprecated spelling

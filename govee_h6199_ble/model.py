@@ -1,12 +1,9 @@
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import NamedTuple
-from typing import TypeAlias
+from typing import ClassVar, NamedTuple, TypeAlias
 
-from .protocol.colortemp import kelvin_for_color
-from .protocol.const import ColorKind, ColorMode, MusicMode, ProtocolGeneration
-
-RGBColor: TypeAlias = tuple[int, int, int]
+from .colortemp import RGBColor, kelvin_for_color
+from .const import ColorKind, ColorMode, MusicMode, ProtocolGeneration
 
 
 class ZoneState(NamedTuple):
@@ -154,48 +151,75 @@ class EdgeBrightness(NamedTuple):
     bottom: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class VideoColorMode:
-    mode = ColorMode.VIDEO
+    mode: ClassVar[ColorMode] = ColorMode.VIDEO
 
     full_screen: bool
     game_mode: bool
-    saturation: int
+    saturation: int | None = 50
     sound_effects: bool = False
-    sound_effects_softness: int = 0
-    brightness: int = 0
+    sound_effects_softness: int | None = 50
+    brightness: int | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class MusicColorMode:
-    mode = ColorMode.MUSIC
+    mode: ClassVar[ColorMode] = ColorMode.MUSIC
 
     music_mode: MusicMode
 
 
-@dataclass
+@dataclass(frozen=True)
 class StaticColorMode:
-    mode = ColorMode.STATIC
+    mode: ClassVar[ColorMode] = ColorMode.STATIC
 
     #: kind of the last static frame, `None` if the device didn't say
     kind: ColorKind | None = None
     #: colors and brightness per zone, filled by `GoveeH6199.get_mode`
-    zones: list[ZoneState] | None = None
+    zones: tuple[ZoneState, ...] | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class UnknownColorMode:
-    mode: int  # raw sub-mode byte
+    raw_mode: int  # raw sub-mode byte
+
+    @property
+    def mode(self) -> int:
+        """Deprecated alias for `raw_mode`."""
+        return self.raw_mode
 
 
 Modes: TypeAlias = VideoColorMode | MusicColorMode | StaticColorMode | UnknownColorMode
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeviceState:
     """Snapshot returned by `GoveeH6199.read_state`"""
 
     power: bool
     brightness: int
     mode: Modes
-    zones: list[ZoneState]
+    zones: tuple[ZoneState, ...]
+
+
+__all__ = [
+    "LOW_BRIGHTNESS_SECONDS",
+    "SAME_TONE_SECONDS",
+    "WHITE_BALANCE_MAX",
+    "WHITE_BALANCE_STEPS",
+    "BlackScreenMode",
+    "BlackScreenSetting",
+    "DeviceState",
+    "EdgeBrightness",
+    "Modes",
+    "MusicColorMode",
+    "Pact",
+    "RGBColor",
+    "StaticColorMode",
+    "UnknownColorMode",
+    "VideoColorMode",
+    "WhiteBalance",
+    "WhiteBalanceState",
+    "ZoneState",
+]

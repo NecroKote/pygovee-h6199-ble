@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from .protocol.const import NotificationType
+from .const import NotificationType
+
+
+@dataclass(frozen=True)
+class Disconnected:
+    """A command or keep-alive detected a transport failure."""
+
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -41,7 +48,8 @@ class UnknownNotification:
 
 
 DeviceEvent: TypeAlias = (
-    BrightnessChanged
+    Disconnected
+    | BrightnessChanged
     | PowerChanged
     | WifiStateChanged
     | MovieModeChanged
@@ -60,6 +68,16 @@ def parse_notification(notification_id: int, payload: bytes) -> DeviceEvent:
     try:
         kind = NotificationType(notification_id)
     except ValueError:
+        return UnknownNotification(notification_id, payload)
+
+    minimum = {
+        NotificationType.WIFI_STATE: 1,
+        NotificationType.BRIGHTNESS: 1,
+        NotificationType.POWER: 2,
+        NotificationType.SUB_DEVICES: 10,
+        NotificationType.MOVIE_MODE: 2,
+    }[kind]
+    if len(payload) < minimum:
         return UnknownNotification(notification_id, payload)
 
     match kind:
@@ -81,3 +99,16 @@ def parse_notification(notification_id: int, payload: bytes) -> DeviceEvent:
                 return MovieModeChanged(payload[1] == 1)
 
     return UnknownNotification(notification_id, payload)
+
+
+__all__ = [
+    "BrightnessChanged",
+    "DeviceEvent",
+    "Disconnected",
+    "MovieModeChanged",
+    "PowerChanged",
+    "SubDeviceStatus",
+    "UnknownNotification",
+    "WifiStateChanged",
+    "parse_notification",
+]

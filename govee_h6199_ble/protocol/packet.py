@@ -1,4 +1,4 @@
-from typing import Iterable
+from collections.abc import Iterable
 
 from .const import ZONE_COUNT
 
@@ -32,6 +32,11 @@ def make_frame(header: int, command: int, payload: list[int]) -> bytes:
 
 def unpack_frame(frame: bytes) -> tuple[int, int, bytes]:
     """Unpack a response frame into header, command id, and payload."""
+
+    if len(frame) != 20:
+        raise ValueError("frame must be exactly 20 bytes")
+    if checksum(frame[:-1]) != frame[-1]:
+        raise ValueError("invalid frame checksum")
 
     header, command, *payload, _ = frame
     return header, command, bytes(payload)

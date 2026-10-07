@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import NamedTuple
 
-from .protocol.const import ProtocolGeneration
+from .const import ProtocolGeneration
 from .model import Pact
 
 
@@ -110,7 +110,7 @@ def from_info(info: DeviceInfo) -> Capabilities:
     Work out what a device supports.
 
     Unknown hardware families get nothing except the pact based features.
-    A missing pact is treated as V2+.
+    A missing or unknown pact does not enable generation-specific features.
     """
 
     chip = _chip(info.hard)
@@ -168,7 +168,8 @@ def from_info(info: DeviceInfo) -> Capabilities:
     return Capabilities(
         chip=chip,
         legacy_color=gen == ProtocolGeneration.V1,
-        zone_brightness=gen != ProtocolGeneration.V1,
+        zone_brightness=gen
+        in (ProtocolGeneration.V2, ProtocolGeneration.V3, ProtocolGeneration.V4),
         service_scenes=service_scenes,
         ai_effects=ai_effects,
         phone_mic_music=phone_mic,

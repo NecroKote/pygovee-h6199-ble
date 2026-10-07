@@ -6,7 +6,7 @@ interface, so the device facade never branches on versions.
 """
 
 from abc import ABC, abstractmethod
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from .capabilities import Capabilities
 from .errors import UnsupportedFeature

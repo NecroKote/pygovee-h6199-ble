@@ -1,24 +1,24 @@
 import asyncio
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 
 from govee_h6199_ble import (
-    BrightnessChanged,
-    MovieModeChanged,
-    PowerChanged,
-    UnknownNotification,
-    WifiStateChanged,
+    WHITE_BALANCE_STEPS,
     BlackScreenMode,
     BlackScreenSetting,
+    BrightnessChanged,
     ColorKind,
-    WHITE_BALANCE_STEPS,
-    StaticColorMode,
     DeviceInfo,
     GoveeH6199,
+    MovieModeChanged,
+    PowerChanged,
+    StaticColorMode,
+    UnknownNotification,
     UnsupportedFeature,
     Version,
     WhiteBalance,
+    WifiStateChanged,
 )
 from govee_h6199_ble.model import Pact
 from govee_h6199_ble.protocol.commands import GetWifiHardwareVersion
@@ -45,7 +45,7 @@ class FakeClient:
     async def stop_notify(self, _):
         pass
 
-    async def write_gatt_char(self, _, frame):
+    async def write_gatt_char(self, _, frame, response=False):
         self.frames.append(frame)
         cmd = frame[1]
         payload = self._replies.get(cmd, [])
@@ -53,7 +53,9 @@ class FakeClient:
             payload = payload(frame)
         reply = make_frame(frame[0], cmd, payload)
         for pushed in self._unsolicited:
-            asyncio.get_running_loop().call_soon(self._callback, None, bytearray(pushed))
+            asyncio.get_running_loop().call_soon(
+                self._callback, None, bytearray(pushed)
+            )
         asyncio.get_running_loop().call_soon(self._callback, None, bytearray(reply))
 
 
@@ -83,9 +85,7 @@ def run(info, action, replies=None, unsolicited=None, **kwargs):
 
 def test_zone_colors_share_frames_by_color():
     red, blue = (255, 0, 0), (0, 0, 255)
-    _, frames = run(
-        REFERENCE, lambda d: d.set_zone_colors({0: red, 1: blue, 8: red})
-    )
+    _, frames = run(REFERENCE, lambda d: d.set_zone_colors({0: red, 1: blue, 8: red}))
     assert len(frames) == 2
     assert frames[0].startswith("33051501ff000000000000000101")  # zones 0 and 8
     assert frames[1].startswith("33051501" + "0000ff" + "0000000000" + "0200")
@@ -152,7 +152,9 @@ def test_white_balance_gated():
     with pytest.raises(UnsupportedFeature):
         run(OLD_FRK, lambda d: d.set_white_balance_raw(WhiteBalance(True)))
 
-    _, frames = run(REFERENCE, lambda d: d.set_white_balance_raw(WhiteBalance(False, 1, 2)))
+    _, frames = run(
+        REFERENCE, lambda d: d.set_white_balance_raw(WhiteBalance(False, 1, 2))
+    )
     assert frames[0].startswith("33a9000301" + "0102")
 
     with pytest.raises(ValueError):
@@ -171,7 +173,7 @@ def test_mode_read_sends_selector():
 
 def test_static_mode_reads_zone_colors():
     replies = {0x05: [0x15, 0x01], 0xA5: zone_reply}
-    mode, frames = run(REFERENCE, lambda d: d.get_mode(), replies)
+    mode, frames = run(REFERENCE, lambda d: d.get_mode(include_zones=True), replies)
 
     assert isinstance(mode, StaticColorMode)
     assert mode.kind is ColorKind.COLOR
@@ -190,7 +192,7 @@ def test_static_mode_without_zones():
 
 def test_v1_static_mode_reads_legacy_zones():
     replies = {0x05: [0x0B], 0xA2: lambda f: [f[2]] + [f[2], 2, 3] * 4}
-    mode, frames = run(V1_DEVICE, lambda d: d.get_mode(), replies)
+    mode, frames = run(V1_DEVICE, lambda d: d.get_mode(include_zones=True), replies)
 
     assert isinstance(mode, StaticColorMode) and mode.kind is None
     assert mode.zones[0] == (100, (1, 2, 3))
@@ -207,8 +209,13 @@ def test_wifi_and_mac_commands():
 
 
 def test_device_info_reads_wifi_versions():
-    replies = {0x06: list(b"1.10.04"), 0x07: [3, *b"3.02.01"],
-               0x20: list(b"1.03.00\0"), 0x21: list(b"1.00.30\0"), 0xEF: [0, 2, 1]}
+    replies = {
+        0x06: list(b"1.10.04"),
+        0x07: [3, *b"3.02.01"],
+        0x20: list(b"1.03.00\0"),
+        0x21: list(b"1.00.30\0"),
+        0xEF: [0, 2, 1],
+    }
 
     async def go(d):
         return await d.get_device_info()
@@ -273,9 +280,13 @@ def test_white_balance_reset_writes_device_default():
 
 
 def test_white_balance_limits():
-    for bad in (WhiteBalance(False, 0, 5), WhiteBalance(False, 32, 5), WhiteBalance(False, 5, 32)):
+    for bad in (
+        WhiteBalance(False, 0, 5),
+        WhiteBalance(False, 32, 5),
+        WhiteBalance(False, 5, 32),
+    ):
         with pytest.raises(ValueError):
-            run(REFERENCE, lambda d: d.set_white_balance_raw(bad))
+            run(REFERENCE, lambda d, bad=bad: d.set_white_balance_raw(bad))
 
     run(REFERENCE, lambda d: d.set_white_balance_raw(WhiteBalance(False, 31, 31)))
 
@@ -376,7 +387,14 @@ def test_keep_alive_skipped_while_busy():
 
 
 def black_reply(enabled=1, mode=2, low=10, same=300):
-    return [0x0A, 6, enabled, mode, *low.to_bytes(2, "little"), *same.to_bytes(2, "little")]
+    return [
+        0x0A,
+        6,
+        enabled,
+        mode,
+        *low.to_bytes(2, "little"),
+        *same.to_bytes(2, "little"),
+    ]
 
 
 def test_black_screen_frame():
@@ -393,27 +411,36 @@ def test_black_screen_read_parses_mode_and_durations():
     assert frames[0].startswith("aaa90a")
 
     # anything but 1 is same tone
-    setting, _ = run(REFERENCE, lambda d: d.get_black_screen(), {0xA9: black_reply(0, 7)})
+    setting, _ = run(
+        REFERENCE, lambda d: d.get_black_screen(), {0xA9: black_reply(0, 7)}
+    )
     assert setting.mode is BlackScreenMode.SAME_TONE and not setting.enabled
 
 
 def test_black_screen_update_keeps_other_fields():
     replies = {0xA9: black_reply(1, 2, 20, 600)}
     _, frames = run(
-        REFERENCE, lambda d: d.update_black_screen(mode=BlackScreenMode.LOW_BRIGHTNESS), replies
+        REFERENCE,
+        lambda d: d.update_black_screen(mode=BlackScreenMode.LOW_BRIGHTNESS),
+        replies,
     )
     assert frames[-1].startswith("33a90a0601" + "01" + "1400" + "5802")
 
 
-def test_black_screen_update_replaces_out_of_range_with_defaults():
+def test_black_screen_update_rejects_invalid_stored_durations():
     replies = {0xA9: black_reply(1, 1, 0, 0)}
-    _, frames = run(REFERENCE, lambda d: d.update_black_screen(enabled=False), replies)
-    assert frames[-1].startswith("33a90a0600" + "01" + "0a00" + "2c01")
+    with pytest.raises(ValueError):
+        run(REFERENCE, lambda d: d.update_black_screen(enabled=False), replies)
 
 
 def test_black_screen_validates_and_is_gated():
     with pytest.raises(ValueError):
-        run(REFERENCE, lambda d: d.set_black_screen(BlackScreenSetting(True, BlackScreenMode.SAME_TONE, 10, 60)))
+        run(
+            REFERENCE,
+            lambda d: d.set_black_screen(
+                BlackScreenSetting(True, BlackScreenMode.SAME_TONE, 10, 60)
+            ),
+        )
 
     with pytest.raises(UnsupportedFeature):
         run(OLD_FRK, lambda d: d.get_black_screen())
@@ -433,7 +460,7 @@ def test_color_temperature_snaps_and_limits():
 
     for bad in (1999, 9001):
         with pytest.raises(ValueError):
-            run(REFERENCE, lambda d: d.set_color_temperature(bad))
+            run(REFERENCE, lambda d, bad=bad: d.set_color_temperature(bad))
 
 
 def test_color_temperature_zones_and_v1():

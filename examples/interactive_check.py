@@ -69,7 +69,7 @@ class Step:
 
 
 async def expect_static_zones(ctx: Ctx, expected: dict[int, tuple[int, int, int]]):
-    mode = await ctx.light.get_mode()
+    mode = await ctx.light.get_mode(include_zones=True)
     if not isinstance(mode, StaticColorMode):
         return f"mode is {type(mode).__name__}, expected static color"
 
@@ -82,7 +82,7 @@ async def expect_static_zones(ctx: Ctx, expected: dict[int, tuple[int, int, int]
 
 
 async def expect_kelvin(ctx: Ctx, kelvin: int, zones=range(15)):
-    mode = await ctx.light.get_mode()
+    mode = await ctx.light.get_mode(include_zones=True)
     if not isinstance(mode, StaticColorMode):
         return f"mode is {type(mode).__name__}, expected static color"
 
@@ -312,11 +312,11 @@ def build_steps() -> list[Step]:
         add("Music mode", title, doing, look + music_hint, action,
             lambda c: expect_music(c, effect))
 
-    music(MusicMode.RYTHM, "Rhythm, soft, automatic colors",
-          "set_music_mode(RYTHM, sensitivity=70, calm=True)",
+    music(MusicMode.RHYTHM, "Rhythm, soft, automatic colors",
+          "set_music_mode(RHYTHM, sensitivity=70, calm=True)",
           "Gentle pulsing to the beat, colors change on their own.", sensitivity=70, calm=True)
-    music(MusicMode.RYTHM, "Rhythm, dynamic, fixed color",
-          "set_music_mode(RYTHM, sensitivity=70, calm=False, color=green)",
+    music(MusicMode.RHYTHM, "Rhythm, dynamic, fixed color",
+          "set_music_mode(RHYTHM, sensitivity=70, calm=False, color=green)",
           "Stronger reaction than the soft variant, in green only.",
           sensitivity=70, calm=False, color=GREEN_RGB)
     music(MusicMode.SPECTRUM, "Spectrum, automatic colors",
@@ -336,17 +336,17 @@ def build_steps() -> list[Step]:
           "The rolling effect uses magenta only.", sensitivity=70, color=(255, 0, 255))
 
     async def sens_low(ctx):
-        await ctx.light.set_music_mode(MusicMode.RYTHM, sensitivity=5)
+        await ctx.light.set_music_mode(MusicMode.RHYTHM, sensitivity=5)
 
     async def sens_high(ctx):
-        await ctx.light.set_music_mode(MusicMode.RYTHM, sensitivity=99)
+        await ctx.light.set_music_mode(MusicMode.RHYTHM, sensitivity=99)
 
-    add("Music mode", "Sensitivity 5", "set_music_mode(RYTHM, sensitivity=5)",
+    add("Music mode", "Sensitivity 5", "set_music_mode(RHYTHM, sensitivity=5)",
         "With the same music the lights react only weakly." + music_hint, sens_low,
-        lambda c: expect_music(c, MusicMode.RYTHM))
-    add("Music mode", "Sensitivity 99", "set_music_mode(RYTHM, sensitivity=99)",
+        lambda c: expect_music(c, MusicMode.RHYTHM))
+    add("Music mode", "Sensitivity 99", "set_music_mode(RHYTHM, sensitivity=99)",
         "With the same music the lights react much more than at 5." + music_hint, sens_high,
-        lambda c: expect_music(c, MusicMode.RYTHM))
+        lambda c: expect_music(c, MusicMode.RHYTHM))
 
     # video mode
     video_hint = (" Show a colorful picture on the TV the device is mounted on; the lights "
@@ -525,7 +525,7 @@ def build_steps() -> list[Step]:
     async def gating(ctx):
         ctx.notes["raised"] = False
         try:
-            await ctx.light.set_video_edge_brightness(50, 50, 50, 50)
+            await ctx.light.set_video_edge_brightness(left=50, top=50, right=50, bottom=50)
         except UnsupportedFeature as error:
             ctx.notes["raised"] = True
             print(f"    raised UnsupportedFeature: {error}")
@@ -537,7 +537,7 @@ def build_steps() -> list[Step]:
         if ctx.notes["raised"] == ctx.caps.video_segment_brightness:
             return "raised / not raised does not match the video_segment_brightness capability"
 
-    add("Gating", "Missing capability raises", "set_video_edge_brightness(50, 50, 50, 50)",
+    add("Gating", "Missing capability raises", "set_video_edge_brightness(left=50, top=50, right=50, bottom=50)",
         "If your capabilities say video_segment_brightness is False the call raises "
         "UnsupportedFeature (printed below). If it is True the call works and the bottom edge "
         "brightness changes. Either way the printed line must match the capabilities.",
@@ -654,8 +654,8 @@ async def restore(light: GoveeH6199, caps: Capabilities, saved: dict):
     mode = state.mode
     if isinstance(mode, VideoColorMode):
         await attempt("video mode", light.set_video_mode(
-            mode.full_screen, mode.game_mode, max(1, mode.saturation),
-            mode.sound_effects, max(1, mode.sound_effects_softness)))
+            mode.full_screen, mode.game_mode, mode.saturation or 50,
+            mode.sound_effects, mode.sound_effects_softness or 50))
     elif isinstance(mode, MusicColorMode):
         print("  music sensitivity and colors can't be read, restoring the effect at defaults")
         await attempt("music mode", light.set_music_mode(mode.music_mode))
@@ -663,7 +663,7 @@ async def restore(light: GoveeH6199, caps: Capabilities, saved: dict):
     if saved.get("white_balance"):
         await attempt("white balance", light.set_white_balance_raw(saved["white_balance"]))
     if saved.get("edges"):
-        await attempt("edge brightness", light.set_video_edge_brightness(*saved["edges"]))
+        await attempt("edge brightness", light.set_video_edge_brightness(**dict(zip(("left", "top", "right", "bottom"), saved["edges"]))))
     if saved.get("black_screen"):
         await attempt("black screen", light.set_black_screen(saved["black_screen"]))
 
