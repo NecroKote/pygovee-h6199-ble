@@ -1,6 +1,6 @@
 [project]
 name = "govee-h6199-ble"
-version = "1.0.0"
+version = "2.0.0"
 description = "Manage Govee DreamView T1 (H6199) BLE devices"
 authors = [{ name = "Mikalai Kukhta", email = "mikalai.kukhta@gmail.com" }]
 readme = "README.md"
