@@ -7,10 +7,5 @@ from .device import GoveeH6199
 
 @asynccontextmanager
 async def connected(client: BleakClient):
-    device = GoveeH6199(client)
-    await device.start()
-
-    try:
+    async with GoveeH6199(client) as device:
         yield device
-    finally:
-        await device.stop()

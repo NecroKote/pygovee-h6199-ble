@@ -1,3 +1,8 @@
+from typing import Iterable
+
+from .const import ZONE_COUNT
+
+
 def checksum(data: bytes):
     """Calculate checksum by XORing all bytes in data."""
 
@@ -30,3 +35,25 @@ def unpack_frame(frame: bytes) -> tuple[int, int, bytes]:
 
     header, command, *payload, _ = frame
     return header, command, bytes(payload)
+
+
+def zone_mask(zones: Iterable[int] | None = None) -> tuple[int, int]:
+    """
+    Build the two zone mask bytes (zones 0-7, zones 8-14).
+
+    `None` selects all zones.
+    """
+
+    if zones is None:
+        zones = range(ZONE_COUNT)
+
+    mask = 0
+    for zone in zones:
+        if not 0 <= zone < ZONE_COUNT:
+            raise ValueError(f"zone must be 0-{ZONE_COUNT - 1}, got {zone}")
+        mask |= 1 << zone
+
+    if not mask:
+        raise ValueError("no zones selected")
+
+    return mask & 0xFF, (mask >> 8) & 0xFF
