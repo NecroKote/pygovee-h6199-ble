@@ -30,3 +30,5 @@ raw = await light.transport.exchange_frame(frame, CommandTimeouts())
 ```
 
 Raw commands use the same error model as high-level calls. Invalid received frame lengths or checksums raise `InvalidResponse`.
+
+`light.transport.last_activity` is the `time.monotonic()` of the last frame *sent*; keep-alive uses it. `light.transport.last_received` is the `time.monotonic()` of the last frame received, or `None`. Prefer `light.last_seen` for liveness.

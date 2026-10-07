@@ -51,6 +51,9 @@ class Transport:
         self._notification_handlers: list[Callable[[int, bytes], None]] = []
         #: `time.monotonic()` of the last frame sent
         self.last_activity = 0.0
+        #: `time.monotonic()` of the last frame received, response or
+        #: notification; `None` until one arrives
+        self.last_received: float | None = None
 
     async def start(self):
         self._log.debug("start ...")
@@ -146,6 +149,7 @@ class Transport:
         return failure
 
     def _handle_response(self, _, data: bytearray):
+        self.last_received = time.monotonic()
         if len(data) >= 2 and data[0] == PacketHeader.NOTIFICATION:
             # never a reply, even if the id looks like the pending command
             for handler in list(self._notification_handlers):

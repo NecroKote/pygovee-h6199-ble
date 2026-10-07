@@ -488,3 +488,14 @@ def test_zone_state_kelvin_reverse_lookup():
     assert ZoneState(100, (0xFF, 0xD5, 0xA1)).kelvin == 4000
     assert ZoneState(100, (0xFF, 0xD1, 0xA3)).kelvin == 4000  # second column
     assert ZoneState(100, (1, 2, 3)).kelvin is None
+
+
+def test_last_seen_set_by_received_frame_not_sent():
+    async def action(device):
+        before = device.last_seen
+        await device.get_power()
+        return before, device.last_seen
+
+    (before, after), _ = run(REFERENCE, action, {0x01: [1]})
+    assert before is None
+    assert after is not None and after.tzinfo is not None

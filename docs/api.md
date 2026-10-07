@@ -1,6 +1,6 @@
 # API reference
 
-This page documents `GoveeH6199`. Methods are asynchronous and must be awaited, except for the constructor and `add_listener`; `transport` is a property.
+This page documents `GoveeH6199`. Methods are asynchronous and must be awaited, except for the constructor and `add_listener`; `transport` and `last_seen` are properties.
 
 ## Common conventions
 
@@ -41,6 +41,12 @@ light = GoveeH6199(
 **Type:** `Transport`
 
 Access the underlying transport to send raw commands and frames. See [low-level access](advanced.md#low-level-access).
+
+### last_seen
+
+**Type:** `datetime | None`
+
+Timezone-aware UTC time of the last frame received from the device, whether a command response or an unsolicited notification. `None` until a frame arrives. A sent frame does not count: this shows the device answered, not that the client wrote. The age is measured on the monotonic clock, so wall-clock changes do not affect it. Use it to judge liveness, for example `datetime.now(timezone.utc) - light.last_seen`.
 
 ## Lifecycle and events
 

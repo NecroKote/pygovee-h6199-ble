@@ -4,6 +4,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from typing import TypeVar
 
 from bleak import BleakClient
@@ -110,6 +111,22 @@ class GoveeH6199:
     def transport(self) -> Transport:
         """Raw access: send arbitrary commands and frames"""
         return self._transport
+
+    @property
+    def last_seen(self) -> datetime | None:
+        """
+        Timezone-aware UTC time of the last frame received from the device,
+        response or notification. `None` until one arrives.
+
+        Measured on the monotonic clock and converted on access, so wall-clock
+        jumps do not distort the age of the frame.
+        """
+
+        received = self._transport.last_received
+        if received is None:
+            return None
+        age = max(0.0, time.monotonic() - received)
+        return datetime.now(timezone.utc) - timedelta(seconds=age)
 
     def add_listener(
         self, listener: Callable[[DeviceEvent], None]
