@@ -1,0 +1,34 @@
+site_name: Govee H6199 BLE
+site_description: Python BLE client for the Govee DreamView T1 (H6199).
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, ""]
+repo_url: https://github.com/NecroKote/pygovee-h6199-ble
+edit_uri: edit/main/docs/
+
+theme:
+  name: readthedocs
+
+nav:
+  - Getting started: index.md
+  - Usage walkthrough: usage.md
+  - Capabilities: capabilities.md
+  - Connection: connection.md
+  - Device events: events.md
+  - Errors: errors.md
+  - Timeouts: timeouts.md
+  - Advanced: advanced.md
+  - API reference: api.md
+  - Upgrading: upgrading.md
+
+plugins:
+  - search
+
+exclude_docs: |
+  /requirements.txt
+
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn

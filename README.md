@@ -1,114 +1,70 @@
-# Govee DreamView T1 (H6199) Ble client
+# Govee DreamView T1 (H6199) BLE client
 
 [![version](https://img.shields.io/pypi/v/govee-h6199-ble)](https://pypi.org/project/govee-h6199-ble)
 [![python version](https://img.shields.io/pypi/pyversions/govee-h6199-ble)](https://github.com/NecroKote/pygovee-h6199-ble)
-[![license](https://img.shields.io/github/license/necrokote/pygovee-h6199-ble)](https://github.com/NecroKote/pygovee-h6199-ble/blob/main/LICENSE.txt)
+[![license](https://img.shields.io/github/license/necrokote/pygovee-h6199-ble)](https://github.com/NecroKote/pygovee-h6199-ble/blob/main/LICENSE)
 
-This is a simple python client to control the Govee DreamView T1 (H6199) via BLE.
+Control the Govee DreamView T1 (H6199) from Python over Bluetooth Low Energy (BLE).
 
+## Install
 
-## Limitations
-The client was tested on a device with **1.10.04 / 3.02.01** FW/HW versions.
+Python 3.11 or newer is required.
 
-Getting current mode would not return currently set color of a static mode and wouldn't distinguish specific music modes and their parameters. The former is caused by device responding with all zeroes, and the latter can be fixed in the future.
-
-There is no support for setting colors for specific segments, nor controling the brightness for individual segments.
+```sh
+python -m pip install govee-h6199-ble
+```
 
 ## Usage
 
-The client uses `bleak` library and relies on it's `BleakClient` instance.
-Client supports the following actions (from `govee_h6199_ble.commands` package):
-- Get state
-  - power
-  - fw version
-  - hw version
-  - mac address
-  - brightness
-  - current mode
-- Turn on/off
-- Set brightness
-- Set Static color mode
-- Set Music color mode
-  - Energic mode
-  - Rythm mode
-  - Spectrum mode
-  - Rolling mode
-- Set Video color mode
-  - Movie mode
-  - Game mode
+Pass an already connected `BleakClient` to `GoveeH6199`. The library reads device information when first needed and selects commands appropriate for the device’s firmware and protocol generation. A capability-gated operation raises `UnsupportedFeature` if the required capability is unavailable. See [capabilities](docs/capabilities.md) for details.
 
-More information can be found by inspecting the `govee_h6199_ble.commands` package.
+## Limitations
 
-### Example
+Scenes and DIY are not supported. Music sensitivity, fixed color and the calm flag cannot be read back. See [hardware coverage](docs/advanced.md#hardware-coverage) for tested firmware.
+
+## Quick start
+
 ```python
 import asyncio
 
 from bleak import BleakClient, BleakScanner
-
-from govee_h6199_ble import (
-    GetFirmwareVersion,
-    GetHardwareVersion,
-    GetPowerState,
-    PowerOff,
-    PowerOn,
-    connected,
-)
+from govee_h6199_ble import GoveeH6199
 
 
 async def main():
-    # scan and find first usable device
-    devices = await BleakScanner.discover()
-    named_devices = ((device, device.name) for device in devices if device.name)
-    h6199_devices = (
-        device for device, name in named_devices if name.startswith("Govee_H6199")
+    device = await BleakScanner.find_device_by_filter(
+        lambda d, _: bool(d.name and d.name.startswith("Govee_H6199"))
     )
+    if device is None:
+        print("no H6199 found")
+        return
 
-    if first_device := next(h6199_devices, None):
-        # connect
-        async with BleakClient(first_device) as client:
-            async with connected(client) as device:
-                power = await device.send_command(GetPowerState())
-                if power:
-                    print("power on")
+    async with BleakClient(device) as client:
+        async with GoveeH6199(client) as light:
+            await light.set_power(True)
+            await light.set_brightness(60)
+            await light.set_static_color((255, 80, 0))
+            print(await light.read_state())
 
-                    # get firmware version and turn device off
-                    fw_version, hw_version, _ = await device.send_commands(
-                        [GetFirmwareVersion(), GetHardwareVersion(), PowerOff()]
-                    )
-
-                    print(fw_version, hw_version)
-                else:
-
-                    # turn on
-                    await device.send_command(PowerOn())
+            caps = await light.get_capabilities()
+            if caps.white_balance:
+                await light.set_white_balance(10)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+The outer context manages the Bluetooth connection; the inner context starts notifications and keep-alive. See [connection](docs/connection.md) for details.
 
-## Exchanging raw frames
-You can also exchange raw frames with the device using:
-```python
-async def exchange_frame(
-    self,
-    frame: bytes,
-    timeouts: CommandTimeouts,
-) -> bytes:...
-```
-and inspect responses manually.
+See the [usage walkthrough](docs/usage.md) for more features and the interactive device check.
 
-> **Be aware**, if the command is not implemented on the device this call command will raise `asyncio.TimeoutError`, since response will not be received.
+## Documentation
 
-## Timeouts
-By default, the client uses the following timeouts:
-- command send timeout: None
-- response receive timeout: 5 seconds
-
-You can customize these timeouts by passing a `CommandTimeouts` instance to the `send_command(s)` calls.
+Start with the [documentation homepage](docs/index.md).
 
 ## Credits
+
 Govee for the device and the app.
 
 https://github.com/Obi2000/Govee-H6199-Reverse-Engineering for the details of the protocol.
