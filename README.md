@@ -6,6 +6,8 @@
 
 Control the Govee DreamView T1 (H6199) from Python over Bluetooth Low Energy (BLE).
 
+Documentation: https://pygovee-h6199-ble.readthedocs.io
+
 ## Install
 
 Python 3.11 or newer is required.

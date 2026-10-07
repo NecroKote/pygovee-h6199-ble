@@ -22,6 +22,7 @@ classifiers = [
 ]
 
 [project.urls]
+Documentation = "https://pygovee-h6199-ble.readthedocs.io"
 Repository = "https://github.com/NecroKote/pygovee-h6199-ble"
 Issues = "https://github.com/NecroKote/pygovee-h6199-ble/issues"
 
