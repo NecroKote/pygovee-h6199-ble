@@ -228,6 +228,14 @@ Which capability enables what:
 
 Calling a gated method on a device without the capability raises `UnsupportedFeature`. Some of them take `force=True` to send the frame anyway, at your own risk.
 
+## Interactive check
+`examples/interactive_check.py` walks through every feature on a real device. After each change it says what was sent and what to look for, compares with a read-back where the device allows one, and waits for your verdict. It restores the original settings at the end.
+```
+python examples/interactive_check.py            # all steps
+python examples/interactive_check.py --list     # show the steps
+python examples/interactive_check.py --only white --only music
+```
+
 ## Low level access
 `light.transport` sends raw commands from `govee_h6199_ble.protocol.commands` or raw frames:
 ```python
